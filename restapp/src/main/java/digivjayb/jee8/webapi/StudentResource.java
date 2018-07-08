@@ -6,6 +6,8 @@ import javax.ejb.Asynchronous;
 import javax.ejb.Stateless;
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.context.RequestScoped;
+import javax.enterprise.event.Event;
+import javax.enterprise.event.Observes;
 import javax.inject.Inject;
 import javax.inject.Named;
 import javax.inject.Qualifier;
@@ -28,10 +30,15 @@ public class StudentResource {
     @Inject
     private StudentService studentService;
 
+    //@Inject
     private ExecutorService executorService;
 
+    @Inject
+    private Event<StudentDTO> event;
+
+
     public StudentResource() {
-        this.executorService = Executors.newFixedThreadPool(3);
+         this.executorService = Executors.newFixedThreadPool(5);
     }
 
     @GET @Path("test-text")
@@ -43,6 +50,8 @@ public class StudentResource {
     public StudentDTO getOne(@PathParam("id") Long id){
 
         final StudentDTO studentDTO = studentService.getOne(id);
+        event.fireAsync(studentDTO);
+        event.fire(studentDTO);
         return studentDTO;
         //return new StudentDTO(id, "Name", new Date());
     }
@@ -51,15 +60,25 @@ public class StudentResource {
     @GET
     @Asynchronous
     public void list(@Suspended AsyncResponse response){
-//        final CompletableFuture<List<StudentDTO>> future = CompletableFuture.supplyAsync(() -> studentService.getAll() , executorService);
-//        future
-//        .thenAccept(list -> {
-//            System.out.println("list = " + list);
-//            response.resume(list);
-//        });
-
-        response.resume(studentService.getAll());
+        CompletableFuture
+                .supplyAsync(studentService::getAll, executorService)
+                .whenComplete( (list, err) -> {
+                    System.out.println("err = " + err);
+                    System.out.println("err.getMessage() = " + err.getMessage());
+                    System.out.println("err.getCause().gatCause() = " + err.getCause().getCause());
+                    if (err != null) {
+                        response.resume(err.getCause().getCause());
+                    }
+                    response.resume(list);
+                });
+//        CompletableFuture
+//                .supplyAsync(studentService::getAll)
+//                .thenAccept(response::resume);
+//        CompletableFuture
+//                .supplyAsync(studentService::getAll, executorService)
+//                .thenAccept(response::resume);
     }
+
 
     public static class StudentDTO {
         private Long id;
